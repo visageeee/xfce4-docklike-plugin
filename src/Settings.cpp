@@ -18,6 +18,7 @@
 
 #include "Settings.hpp"
 #include "Hotkeys.hpp"
+#include "Switcher.hpp"
 #include "LauncherEntry.hpp"
 
 namespace Settings
@@ -26,7 +27,10 @@ namespace Settings
 	Store::AutoPtr<GKeyFile> mFile;
 
 	State<bool> forceIconSize;
+	State<bool> altTabSwitcher;
+	State<bool> altTabListView;
 	State<int> iconSize;
+	State<int> iconMargin;
 
 	State<bool> noWindowsListIfSingle;
 	State<bool> onlyDisplayVisible;
@@ -66,9 +70,9 @@ namespace Settings
 		if (g_file_test(path, G_FILE_TEST_IS_REGULAR))
 			g_key_file_load_from_file(file, path, G_KEY_FILE_NONE, nullptr);
 
-		else // Look for a default config file in XDG_CONFIG_DIRS/xfce4/panel/docklike.rc
+		else // Look for a default config file in XDG_CONFIG_DIRS/xfce4/panel/docklike-test.rc
 		{
-			gchar* distConfig = xfce_resource_lookup(XFCE_RESOURCE_CONFIG, "xfce4/panel/docklike.rc");
+			gchar* distConfig = xfce_resource_lookup(XFCE_RESOURCE_CONFIG, "xfce4/panel/docklike-test.rc");
 
 			if (distConfig != nullptr && g_file_test(distConfig, G_FILE_TEST_IS_REGULAR))
 				g_key_file_load_from_file(file, distConfig, G_KEY_FILE_NONE, nullptr);
@@ -156,6 +160,24 @@ namespace Settings
 				Dock::drawGroups();
 			});
 
+		altTabListView.setup(g_key_file_get_boolean(file, "user", "altTabListView", nullptr),
+			[](bool enabled) {
+				g_key_file_set_boolean(mFile.get(), "user", "altTabListView", enabled);
+				saveFile();
+			});
+
+		altTabSwitcher.setup(g_key_file_get_boolean(file, "user", "altTabSwitcher", nullptr),
+			[](bool enabled) {
+				if (!Switcher::setEnabled(enabled))
+				{
+					altTabSwitcher.set(!enabled);
+					return;
+				}
+				g_key_file_set_boolean(mFile.get(), "user", "altTabSwitcher", enabled);
+				SettingsDialog::updateSwitcherSetting();
+				saveFile();
+			});
+
 		forceIconSize.setup(g_key_file_get_boolean(file, "user", "forceIconSize", nullptr),
 			[](bool _forceIconSize) -> void {
 				g_key_file_set_boolean(mFile.get(), "user", "forceIconSize", _forceIconSize);
@@ -175,6 +197,19 @@ namespace Settings
 				g_key_file_set_integer(mFile.get(), "user", "iconSize", _iconSize);
 				saveFile();
 
+				Dock::onPanelResize();
+			});
+
+		iconMargin.setup(CLAMP(g_key_file_get_integer(file, "user", "iconMargin", nullptr), 0, 32),
+			[](int margin) {
+				const int clamped = CLAMP(margin, 0, 32);
+				if (margin != clamped)
+				{
+					iconMargin.set(clamped);
+					return;
+				}
+				g_key_file_set_integer(mFile.get(), "user", "iconMargin", margin);
+				saveFile();
 				Dock::onPanelResize();
 			});
 

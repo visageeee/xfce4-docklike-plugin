@@ -23,6 +23,7 @@
 #include "Hotkeys.hpp"
 #include "LauncherEntry.hpp"
 #include "Plugin.hpp"
+#include "Switcher.hpp"
 
 namespace Plugin
 {
@@ -45,8 +46,10 @@ namespace Plugin
 		LauncherEntry::init();
 		Theme::init();
 		Hotkeys::init();
+		Switcher::init();
 
 		gtk_container_add(GTK_CONTAINER(mXfPlugin), Dock::mBox);
+		xfce_panel_plugin_set_shrink(mXfPlugin, true);
 		xfce_panel_plugin_menu_show_configure(mXfPlugin);
 		xfce_panel_plugin_menu_show_about(mXfPlugin);
 
@@ -59,11 +62,17 @@ namespace Plugin
 			}),
 			nullptr);
 
-		g_signal_connect(G_OBJECT(GTK_WIDGET(mXfPlugin)), "orientation-changed",
-			G_CALLBACK(+[](XfcePanelPlugin* plugin, GtkOrientation orientation) {
-				Dock::onPanelOrientationChange(orientation);
+		g_signal_connect(G_OBJECT(GTK_WIDGET(mXfPlugin)), "mode-changed",
+			G_CALLBACK(+[](XfcePanelPlugin* plugin, XfcePanelPluginMode mode) {
+				Dock::onPanelOrientationChange(mode == XFCE_PANEL_PLUGIN_MODE_HORIZONTAL
+					? GTK_ORIENTATION_HORIZONTAL : GTK_ORIENTATION_VERTICAL);
 			}),
 			nullptr);
+
+		// Sync at construction as well as on later panel mode changes.
+		Dock::onPanelOrientationChange(xfce_panel_plugin_get_mode(mXfPlugin) == XFCE_PANEL_PLUGIN_MODE_HORIZONTAL
+			? GTK_ORIENTATION_HORIZONTAL : GTK_ORIENTATION_VERTICAL);
+		Dock::onPanelResize(xfce_panel_plugin_get_size(mXfPlugin));
 
 		g_signal_connect(G_OBJECT(mXfPlugin), "configure-plugin",
 			G_CALLBACK(+[](XfcePanelPlugin* plugin) {
@@ -87,6 +96,7 @@ namespace Plugin
 
 		g_signal_connect(G_OBJECT(mXfPlugin), "free-data",
 			G_CALLBACK(+[](XfcePanelPlugin* plugin) {
+				Switcher::finalize();
 				LauncherEntry::finalize();
 				Xfw::finalize();
 				Dock::mGroups.clear();
@@ -125,7 +135,9 @@ namespace Plugin
 
 	void remoteEvent(gchar* name, GValue* value)
 	{
-		if (g_strcmp0(name, "settings") == 0)
+		if (g_strcmp0(name, "switch-app") == 0 && G_VALUE_HOLDS_BOOLEAN(value))
+			Switcher::cycle(g_value_get_boolean(value));
+		else if (g_strcmp0(name, "settings") == 0)
 			SettingsDialog::popup();
 		else if (g_strcmp0(name, "about") == 0)
 			aboutDialog();

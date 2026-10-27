@@ -1,6 +1,12 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Generated with glade 3.22.2 -->
 <interface>
+  <object class="GtkAdjustment" id="iconMarginAdjustment">
+    <property name="lower">0</property>
+    <property name="upper">32</property>
+    <property name="step_increment">1</property>
+    <property name="page_increment">5</property>
+  </object>
   <requires lib="gtk+" version="3.22"/>
   <requires lib="libxfce4ui-2" version="4.20"/>
   <object class="GtkAdjustment" id="previewWidthAdjustment">
@@ -34,7 +40,7 @@
   </object>
   <object class="XfceTitledDialog" id="dialog">
     <property name="can_focus">False</property>
-    <property name="title">Docklike Taskbar</property>
+    <property name="title">Docklike Taskbar (Test)</property>
     <property name="resizable">False</property>
     <property name="icon_name">preferences-system</property>
     <property name="type_hint">normal</property>
@@ -189,7 +195,8 @@
                     </child>
                     <child>
                       <object class="GtkCheckButton" id="c_disableLauncherCounts">
-                        <property name="label" translatable="yes">Disable D-Bus launcher counts</property>
+                        <property name="label" translatable="yes">Hide notification badges</property>
+                        <property name="tooltip_text" translatable="yes">Hide app-provided unread counts on dock icons and in Alt+Tab. Apps must support the Unity LauncherEntry protocol.</property>
                         <property name="visible">True</property>
                         <property name="can_focus">True</property>
                         <property name="receives_default">False</property>
@@ -487,6 +494,30 @@
                         <property name="top_attach">5</property>
                       </packing>
                     </child>
+                    <child>
+                      <object class="GtkLabel">
+                        <property name="visible">True</property>
+                        <property name="halign">start</property>
+                        <property name="label" translatable="yes">Icon margin (px per side):</property>
+                      </object>
+                      <packing>
+                        <property name="left_attach">0</property>
+                        <property name="top_attach">6</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkSpinButton" id="iconMarginButton">
+                        <property name="visible">True</property>
+                        <property name="can_focus">True</property>
+                        <property name="numeric">True</property>
+                        <property name="adjustment">iconMarginAdjustment</property>
+                        <property name="tooltip_text" translatable="yes">Margin before and after each icon along the panel. Icons shrink first; margins shrink only if even one-pixel icons cannot fit. Overrides CSS button margins.</property>
+                      </object>
+                      <packing>
+                        <property name="left_attach">1</property>
+                        <property name="top_attach">6</property>
+                      </packing>
+                    </child>
                         <child>
                           <object class="GtkLabel">
                             <property name="visible">True</property>
@@ -497,7 +528,7 @@
                           </object>
                           <packing>
                             <property name="left_attach">0</property>
-                            <property name="top_attach">6</property>
+                            <property name="top_attach">7</property>
                           </packing>
                         </child>
                         <child>
@@ -512,7 +543,7 @@
                           </object>
                           <packing>
                             <property name="left_attach">1</property>
-                            <property name="top_attach">6</property>
+                            <property name="top_attach">7</property>
                           </packing>
                         </child>
                         <child>
@@ -526,7 +557,7 @@
                           </object>
                           <packing>
                             <property name="left_attach">0</property>
-                            <property name="top_attach">7</property>
+                            <property name="top_attach">8</property>
                           </packing>
                         </child>
                         <child>
@@ -540,7 +571,7 @@
                           </object>
                           <packing>
                             <property name="left_attach">1</property>
-                            <property name="top_attach">7</property>
+                            <property name="top_attach">8</property>
                           </packing>
                         </child>
                   </object>
@@ -634,6 +665,19 @@
                       </packing>
                     </child>
                     <child>
+                      <object class="GtkCheckButton" id="c_altTabSwitcher">
+                        <property name="label" translatable="yes">Use Docklike for Alt+Tab</property>
+                        <property name="visible">True</property>
+                        <property name="halign">start</property>
+                        <property name="tooltip_text" translatable="yes">Replace the system Alt+Tab switcher with running apps from this dock. Alt+Shift+Tab cycles backwards; releasing Alt switches apps. Alt+§ cycles windows of the active app; Alt+Shift+§ reverses. Previous shortcuts are restored when disabled. Requires X11.</property>
+                      </object>
+                      <packing>
+                        <property name="left_attach">0</property>
+                        <property name="top_attach">2</property>
+                        <property name="width">2</property>
+                      </packing>
+                    </child>
+                    <child>
                       <object class="GtkButton" id="c_shortcutsButton">
                         <property name="label" translatable="yes">Manage shortcuts...</property>
                         <property name="visible">True</property>
@@ -646,7 +690,20 @@
                       </object>
                       <packing>
                         <property name="left_attach">0</property>
-                        <property name="top_attach">2</property>
+                        <property name="top_attach">4</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkCheckButton" id="c_altTabListView">
+                        <property name="label" translatable="yes">Show Alt+Tab apps as a list</property>
+                        <property name="visible">True</property>
+                        <property name="halign">start</property>
+                        <property name="tooltip_text" translatable="yes">Use compact rows with icons and app names instead of the icon grid. Press Q in either view to close the highlighted app's windows normally.</property>
+                      </object>
+                      <packing>
+                        <property name="left_attach">0</property>
+                        <property name="top_attach">3</property>
+                        <property name="width">2</property>
                       </packing>
                     </child>
                   </object>

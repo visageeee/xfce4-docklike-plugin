@@ -113,6 +113,9 @@ namespace Xfw
 
 		g_signal_connect(G_OBJECT(mXfwScreen), "window-closed",
 			G_CALLBACK(+[](XfwScreen* screen, XfwWindow* xfwWindow) {
+				auto closing = mGroupWindows.get(xfwWindow);
+				if (closing && closing->mGroup) closing->mGroup->onWindowClosed(closing.get());
+				closing.reset();
 				mGroupWindows.pop(xfwWindow);
 				if (xfwWindow == mPreviousActiveWindow)
 					mPreviousActiveWindow = nullptr;

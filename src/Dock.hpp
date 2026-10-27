@@ -37,6 +37,7 @@ class Group;
 namespace Dock
 {
 	void init();
+	void styleButton(GtkWidget* button);
 
 	Group* prepareGroup(std::shared_ptr<AppInfo> appInfo);
 

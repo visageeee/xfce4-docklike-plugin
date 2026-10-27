@@ -61,7 +61,7 @@ GroupMenu::GroupMenu(Group* dockButton)
 	mWindow = create_window();
 	mBox = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
 
-	Help::Gtk::cssClassAdd(mWindow, "xfce-docklike-window");
+	Help::Gtk::cssClassAdd(mWindow, "xfce-docklike-test-window");
 	Help::Gtk::cssClassAdd(mBox, "menu");
 
 	gtk_container_add(GTK_CONTAINER(mWindow), mBox);

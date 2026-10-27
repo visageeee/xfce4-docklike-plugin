@@ -18,6 +18,16 @@
 
 #include "Dock.hpp"
 #include "LauncherEntry.hpp"
+#include "DockLayout.hpp"
+
+// A GtkBox whose minimum length is independent of its full-size icons.
+// Xfce can then reserve space for the other plugins before allocating this one.
+struct DocklikeTestBox { GtkBox parent; };
+struct DocklikeTestBoxClass { GtkBoxClass parent; };
+static GType docklike_test_box_get_type();
+G_DEFINE_TYPE(DocklikeTestBox, docklike_test_box, GTK_TYPE_BOX)
+
+static void docklike_test_box_init(DocklikeTestBox*) {}
 
 namespace Dock
 {
@@ -26,14 +36,66 @@ namespace Dock
 
 	int mPanelSize;
 	int mIconSize;
+	static int preferredIconSize = 16;
+	static GtkCssProvider* buttonSizing;
+	static std::string appliedSizing;
+
+	static int visibleCount()
+	{
+		int count = 0;
+		GList* children = gtk_container_get_children(GTK_CONTAINER(mBox));
+		for (GList* child = children; child; child = child->next)
+			if (gtk_widget_get_visible(GTK_WIDGET(child->data)))
+				++count;
+		g_list_free(children);
+		return count;
+	}
+
+	static void setButtonPadding(int padding, int margin = 0)
+	{
+		const bool horizontal = gtk_orientable_get_orientation(GTK_ORIENTABLE(mBox)) == GTK_ORIENTATION_HORIZONTAL;
+		// Widget margins are layout space, independent of CSS shorthand and themes.
+		GList* buttons = gtk_container_get_children(GTK_CONTAINER(mBox));
+		for (GList* child = buttons; child; child = child->next)
+		{
+			GtkWidget* button = GTK_WIDGET(child->data);
+			gtk_widget_set_margin_top(button, horizontal ? 0 : margin);
+			gtk_widget_set_margin_bottom(button, horizontal ? 0 : margin);
+			gtk_widget_set_margin_start(button, horizontal ? margin : 0);
+			gtk_widget_set_margin_end(button, horizontal ? margin : 0);
+		}
+		g_list_free(buttons);
+		gchar* css = g_strdup_printf("button.group { min-width: 0; min-height: 0; margin: 0; border-width: 0; padding: %dpx; }", padding);
+		if (appliedSizing != css)
+		{
+			appliedSizing = css;
+			gtk_css_provider_load_from_data(buttonSizing, css, -1, nullptr);
+			// Margins can change without changing the icon size. Invalidate each
+			// button's cached request before GtkBox allocates this same frame.
+			GList* children = gtk_container_get_children(GTK_CONTAINER(mBox));
+			for (GList* child = children; child; child = child->next)
+				gtk_widget_queue_resize(GTK_WIDGET(child->data));
+			g_list_free(children);
+		}
+		g_free(css);
+	}
+
+	void styleButton(GtkWidget* button)
+	{
+		gtk_style_context_add_provider(gtk_widget_get_style_context(button),
+			GTK_STYLE_PROVIDER(buttonSizing), GTK_STYLE_PROVIDER_PRIORITY_USER + 1);
+	}
 
 	void init()
 	{
-		mBox = gtk_box_new(GTK_ORIENTATION_HORIZONTAL, 0);
-		gtk_widget_set_name(mBox, "docklike-plugin");
+		mBox = GTK_WIDGET(g_object_new(docklike_test_box_get_type(), "orientation", GTK_ORIENTATION_HORIZONTAL, nullptr));
+		buttonSizing = gtk_css_provider_new();
+		appliedSizing.clear();
+		setButtonPadding(4);
+		// Contexts retain the provider; release our reference with the dock.
+		g_object_set_data_full(G_OBJECT(mBox), "button-sizing", buttonSizing, g_object_unref);
+		gtk_widget_set_name(mBox, "docklike-test-plugin");
 
-		if (Settings::dockSize)
-			gtk_widget_set_size_request(mBox, Settings::dockSize, -1);
 
 		gtk_widget_show(mBox);
 		drawGroups();
@@ -48,6 +110,7 @@ namespace Dock
 			group = std::make_shared<Group>(appInfo, false);
 			mGroups.push(appInfo, group);
 			gtk_container_add(GTK_CONTAINER(mBox), group->mButton);
+			LauncherEntry::refreshGroups();
 		}
 
 		return group.get();
@@ -175,37 +238,84 @@ namespace Dock
 		if (size != -1)
 			mPanelSize = size;
 
-		gtk_box_set_spacing(GTK_BOX(mBox), mPanelSize / 10);
 
 		if (Settings::forceIconSize)
-			mIconSize = Settings::iconSize;
+			preferredIconSize = Settings::iconSize;
 		else
 		{
 			if (mPanelSize <= 20)
-				mIconSize = mPanelSize - 6;
+				preferredIconSize = mPanelSize - 6;
 			else if (mPanelSize <= 28)
-				mIconSize = 16;
+				preferredIconSize = 16;
 			else if (mPanelSize <= 38)
-				mIconSize = 24;
+				preferredIconSize = 24;
 			else if (mPanelSize <= 41)
-				mIconSize = 32;
+				preferredIconSize = 32;
 			else
-				mIconSize = mPanelSize * 0.8;
+				preferredIconSize = mPanelSize * 0.8;
 		}
 
-		mGroups.forEach([](std::pair<std::shared_ptr<AppInfo>, std::shared_ptr<Group>> g) -> void { g.second->resize(); });
+		preferredIconSize = std::max(1, preferredIconSize);
+		gtk_widget_queue_resize(mBox);
 	}
 
 	void onPanelOrientationChange(GtkOrientation orientation)
 	{
 		gtk_orientable_set_orientation(GTK_ORIENTABLE(mBox), orientation);
 
-		if (Settings::dockSize)
-		{
-			if (orientation == GTK_ORIENTATION_HORIZONTAL)
-				gtk_widget_set_size_request(mBox, Settings::dockSize, -1);
-			else
-				gtk_widget_set_size_request(mBox, -1, Settings::dockSize);
-		}
+		gtk_widget_queue_resize(mBox);
 	}
 } // namespace Dock
+
+static void docklike_test_box_measure(GtkWidget* widget, GtkOrientation axis, gint* minimum, gint* natural)
+{
+	const GtkOrientation orientation = gtk_orientable_get_orientation(GTK_ORIENTABLE(widget));
+	if (axis == orientation)
+	{
+		const int count = Dock::visibleCount();
+		*minimum = std::max(1, count);
+		// Never base the natural size on the currently compressed icons: doing so
+		// prevents the dock growing back after another panel item disappears.
+		*natural = std::max(*minimum, std::max(static_cast<int>(Settings::dockSize),
+			count * (Dock::preferredIconSize + 8 + 2 * static_cast<int>(Settings::iconMargin)) + std::max(0, count - 1) * (Dock::mPanelSize / 10)));
+	}
+	else
+		*minimum = *natural = std::max(1, Dock::mPanelSize);
+}
+
+static void docklike_test_box_allocate(GtkWidget* widget, GtkAllocation* allocation)
+{
+	const bool horizontal = gtk_orientable_get_orientation(GTK_ORIENTABLE(widget)) == GTK_ORIENTATION_HORIZONTAL;
+	const auto sizes = DockLayout::fit(horizontal ? allocation->width : allocation->height,
+		horizontal ? allocation->height : allocation->width, Dock::visibleCount(),
+		Dock::preferredIconSize, Dock::mPanelSize / 10, Settings::iconMargin);
+	Dock::setButtonPadding(sizes.padding, sizes.margin);
+	gtk_box_set_spacing(GTK_BOX(widget), sizes.spacing);
+	if (Dock::mIconSize != sizes.icon)
+	{
+		Dock::mIconSize = sizes.icon;
+		Dock::mGroups.forEach([](std::pair<std::shared_ptr<AppInfo>, std::shared_ptr<Group>> g) {
+			g.second->resize();
+		});
+	}
+	GTK_WIDGET_CLASS(docklike_test_box_parent_class)->size_allocate(widget, allocation);
+}
+
+static void docklike_test_box_class_init(DocklikeTestBoxClass* klass)
+{
+	GtkWidgetClass* widget = GTK_WIDGET_CLASS(klass);
+	widget->get_request_mode = +[](GtkWidget*) { return GTK_SIZE_REQUEST_CONSTANT_SIZE; };
+	widget->get_preferred_width = +[](GtkWidget* w, gint* m, gint* n) {
+		docklike_test_box_measure(w, GTK_ORIENTATION_HORIZONTAL, m, n);
+	};
+	widget->get_preferred_height = +[](GtkWidget* w, gint* m, gint* n) {
+		docklike_test_box_measure(w, GTK_ORIENTATION_VERTICAL, m, n);
+	};
+	widget->get_preferred_width_for_height = +[](GtkWidget* w, gint, gint* m, gint* n) {
+		docklike_test_box_measure(w, GTK_ORIENTATION_HORIZONTAL, m, n);
+	};
+	widget->get_preferred_height_for_width = +[](GtkWidget* w, gint, gint* m, gint* n) {
+		docklike_test_box_measure(w, GTK_ORIENTATION_VERTICAL, m, n);
+	};
+	widget->size_allocate = docklike_test_box_allocate;
+}

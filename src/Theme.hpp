@@ -19,12 +19,12 @@
 #ifndef THEME_HPP
 #define THEME_HPP
 
-#define DEFAULT_THEME ".xfce-docklike-window .menu { margin: 0px; padding: 0px; border: 0px; background-color: @menu_bgcolor; }\n" \
-					  ".xfce-docklike-window .menu_item grid { margin: 0px; padding:4px; }\n"                                      \
-					  ".xfce-docklike-window .menu_item .preview { margin:2px 0px }\n"                                             \
-					  ".xfce-docklike-window .hover_menu_item { background-color: alpha(@menu_item_color_hover, 0.2); }\n";
+#define DEFAULT_THEME ".xfce-docklike-test-window .menu { margin: 0px; padding: 0px; border: 0px; background-color: @menu_bgcolor; }\n" \
+					  ".xfce-docklike-test-window .menu_item grid { margin: 0px; padding:4px; }\n"                                      \
+					  ".xfce-docklike-test-window .menu_item .preview { margin:2px 0px }\n"                                             \
+					  ".xfce-docklike-test-window .hover_menu_item { background-color: alpha(@menu_item_color_hover, 0.2); }\n";
 
-#define LAUNCHER_COUNT_THEME "#docklike-plugin .launcher_count { "         \
+#define LAUNCHER_COUNT_THEME "#docklike-test-plugin .launcher_count { "         \
 							 "color: @launcher_count_fgcolor; "            \
 							 "background-color: @launcher_count_bgcolor; " \
 							 "border-radius: 999px; "                      \

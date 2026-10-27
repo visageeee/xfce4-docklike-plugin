@@ -17,9 +17,21 @@
  */
 
 #include "Group.hpp"
+#include "ForceQuit.hpp"
 #include "Hotkeys.hpp"
+#include "Switcher.hpp"
+#include "JumpList.hpp"
+#include "ProcessStop.hpp"
+#include <poll.h>
+#ifdef ENABLE_X11
+#include <gdk/gdkx.h>
+#include <X11/Xutil.h>
+#include <X11/Xatom.h>
+#include <climits>
+#include <libxfce4windowing/xfw-x11.h>
+#endif
 
-static GtkTargetEntry entries[1] = {{(gchar*)"application/docklike_group", 0, 0}};
+static GtkTargetEntry entries[1] = {{(gchar*)"application/docklike_test_group", 0, 0}};
 static GtkTargetList* targetList = gtk_target_list_new(entries, 1);
 
 static std::string getDragId(const std::shared_ptr<AppInfo>& appInfo)
@@ -96,6 +108,7 @@ Group::Group(std::shared_ptr<AppInfo> appInfo, bool pinned) : mPinned(pinned), m
 
 	Help::Gtk::cssClassAdd(mButton, "flat");
 	Help::Gtk::cssClassAdd(mButton, "group");
+	Dock::styleButton(mButton);
 	Help::Gtk::cssClassAdd(mLabel, "window_count");
 	Help::Gtk::cssClassAdd(mLauncherLabel, "launcher_count");
 	gtk_style_context_add_provider(gtk_widget_get_style_context(mLauncherLabel),
@@ -263,6 +276,8 @@ Group::Group(std::shared_ptr<AppInfo> appInfo, bool pinned) : mPinned(pinned), m
 
 Group::~Group()
 {
+	if (mProcessCheck) g_source_remove(mProcessCheck);
+	for (const auto& process : mProcessHandles) ::close(process.second);
 	mLeaveTimeout.stop();
 	mMenuShowTimeout.stop();
 
@@ -277,8 +292,92 @@ Group::~Group()
 	g_object_unref(mLauncherCountCssProvider);
 }
 
+// Keep identity-bound handles while a window exists, before its X properties
+// disappear. Never infer a local process from an unverified remote window PID.
+void Group::trackProcess(GroupWindow* window)
+{
+#ifdef ENABLE_X11
+	GdkDisplay* display = gdk_display_get_default();
+	if (!GDK_IS_X11_DISPLAY(display)) return;
+	const Window xid = xfw_window_x11_get_xid(window->mXfwWindow);
+	// The application leader may not advertise a PID (Steam's helper windows
+	// can still advertise their own). Prefer the actual window's property.
+	Atom type = None;
+	int format = 0;
+	unsigned long count = 0, remaining = 0;
+	unsigned char* value = nullptr;
+	gdk_x11_display_error_trap_push(display);
+	const int result = XGetWindowProperty(GDK_DISPLAY_XDISPLAY(display), xid,
+		XInternAtom(GDK_DISPLAY_XDISPLAY(display), "_NET_WM_PID", False),
+		0, 1, False, XA_CARDINAL, &type, &format, &count, &remaining, &value);
+	const int propertyError = gdk_x11_display_error_trap_pop(display);
+	int pid = 0;
+	if (result == Success && !propertyError && type == XA_CARDINAL && format == 32 && count == 1 && value)
+	{
+		const unsigned long candidate = *reinterpret_cast<unsigned long*>(value);
+		if (candidate > 1 && candidate <= INT_MAX) pid = candidate;
+	}
+	if (value) XFree(value);
+	if (!pid)
+	{
+		auto* app = xfw_window_get_application(window->mXfwWindow);
+		auto* instance = app ? xfw_application_get_instance(app, window->mXfwWindow) : nullptr;
+		pid = instance ? xfw_application_instance_get_pid(instance) : 0;
+	}
+	if (pid <= 1 || pid == getpid()) return;
+	hasLiveProcess();
+	if (mProcessHandles.count(pid)) return;
+	XTextProperty machine = {};
+	gdk_x11_display_error_trap_push(display);
+	const bool found = XGetWMClientMachine(GDK_DISPLAY_XDISPLAY(display), xfw_window_x11_get_xid(window->mXfwWindow), &machine);
+	const int error = gdk_x11_display_error_trap_pop(display);
+	const bool local = found && !error && machine.value && machine.format == 8
+		&& std::string(reinterpret_cast<char*>(machine.value), machine.nitems) == g_get_host_name();
+	if (machine.value) XFree(machine.value);
+	if (!local) return;
+	const int fd = ProcessStop::open(pid);
+	if (fd >= 0) mProcessHandles.emplace(pid, fd);
+#endif
+}
+
+bool Group::hasLiveProcess()
+{
+	for (auto it = mProcessHandles.begin(); it != mProcessHandles.end(); )
+	{
+		pollfd process = {it->second, POLLIN, 0};
+		const int result = poll(&process, 1, 0);
+		if (result > 0 || (result < 0 && errno != EINTR))
+		{
+			::close(it->second); it = mProcessHandles.erase(it);
+		}
+		else ++it;
+	}
+	return !mProcessHandles.empty();
+}
+
+void Group::onWindowClosed(GroupWindow* window)
+{
+	// A workspace/monitor filter change is not an application closing.
+	if (!window->mGroupAssociated || mWindowsCount != 1
+		|| window->getState(XFW_WINDOW_STATE_SKIP_TASKLIST)) return;
+	mBackgroundRunning = hasLiveProcess();
+	if (!mBackgroundRunning || mProcessCheck) return;
+	mProcessCheck = g_timeout_add(500, +[](gpointer data) -> gboolean {
+		auto* group = static_cast<Group*>(data);
+		if (group->hasLiveProcess()) return G_SOURCE_CONTINUE;
+		group->mProcessCheck = 0;
+		group->mBackgroundRunning = false;
+		group->updateStyle();
+		gtk_widget_queue_draw(group->mButton);
+		return G_SOURCE_REMOVE;
+	}, this);
+}
+
 void Group::add(GroupWindow* window)
 {
+	trackProcess(window);
+	mBackgroundRunning = false;
+	if (mProcessCheck) { g_source_remove(mProcessCheck); mProcessCheck = 0; }
 	mWindows.push(window);
 	mWindowsCount.updateState();
 	mGroupMenu.add(window->mGroupMenuItem);
@@ -302,7 +401,8 @@ void Group::remove(GroupWindow* window)
 	if (mTopWindowIndex >= mWindowsCount)
 		mTopWindowIndex = 0;
 
-	if (!mWindowsCount)
+	if (!mWindowsCount) onWindowUnactivate();
+	if (!isRunning())
 		Help::Gtk::cssClassRemove(mButton, "open_group");
 
 	gtk_widget_queue_draw(mButton);
@@ -325,7 +425,7 @@ void Group::activate(guint32 timestamp)
 
 void Group::scrollWindows(guint32 timestamp, GdkScrollDirection direction)
 {
-	if (mPinned && !mWindowsCount)
+	if (!mWindowsCount)
 		return;
 
 	if (!mActive)
@@ -473,7 +573,7 @@ void Group::onDraw(cairo_t* cr)
 
 	case STYLE_BARS:
 	{
-		if (mWindowsCount > 0)
+		if (isRunning())
 		{
 			cairo_set_source_rgba(cr, rgba[0], rgba[1], rgba[2], rgba[3]);
 
@@ -527,7 +627,7 @@ void Group::onDraw(cairo_t* cr)
 
 	case STYLE_CILIORA:
 	{
-		if (mWindowsCount > 0)
+		if (isRunning())
 		{
 			int offset;
 			cairo_set_source_rgba(cr, rgba[0], rgba[1], rgba[2], rgba[3]);
@@ -588,7 +688,7 @@ void Group::onDraw(cairo_t* cr)
 
 	case STYLE_CIRCLES:
 	{
-		if (mWindowsCount > 0)
+		if (isRunning())
 		{
 			if (mWindowsCount > 1)
 			{
@@ -673,7 +773,7 @@ void Group::onDraw(cairo_t* cr)
 
 	case STYLE_DOTS:
 	{
-		if (mWindowsCount > 0)
+		if (isRunning())
 		{
 			if (mWindowsCount > 1)
 			{
@@ -765,7 +865,7 @@ void Group::onDraw(cairo_t* cr)
 
 	case STYLE_RECTS:
 	{
-		if (mWindowsCount > 0)
+		if (isRunning())
 		{
 			int vw;
 
@@ -855,7 +955,9 @@ void Group::setMouseLeaveTimeout()
 
 void Group::updateStyle()
 {
-	if (mPinned || mWindowsCount > 0)
+	if (isRunning()) Help::Gtk::cssClassAdd(mButton, "open_group");
+	else Help::Gtk::cssClassRemove(mButton, "open_group");
+	if (mPinned || isRunning())
 		gtk_widget_show_all(mButton);
 	else
 		gtk_widget_hide(mButton);
@@ -882,13 +984,18 @@ void Group::updateStyle()
 
 void Group::setLauncherCount(gint64 count, bool visible)
 {
+	count = std::max<gint64>(0, count);
+	visible = visible && count > 0;
+	mLauncherCount = count;
+	mLauncherCountVisible = visible;
+	Switcher::refreshBadges();
 	if (!visible)
 	{
 		gtk_widget_hide(mLauncherLabel);
 		return;
 	}
 
-	gtk_label_set_text(GTK_LABEL(mLauncherLabel), std::to_string(count).c_str());
+	gtk_label_set_text(GTK_LABEL(mLauncherLabel), (count > 99 ? std::string("99+") : std::to_string(count)).c_str());
 	gtk_widget_show(mLauncherLabel);
 }
 
@@ -957,6 +1064,7 @@ void Group::setTopWindow(GroupWindow* groupWindow)
 GtkWidget* Group::buildContextMenu()
 {
 	GtkWidget* menu = gtk_menu_new();
+	JumpList::append(menu, mAppInfo);
 
 	if (mAppInfo->mGAppInfo != nullptr)
 	{
@@ -980,7 +1088,7 @@ GtkWidget* Group::buildContextMenu()
 			{
 				item = gtk_menu_item_new_with_label(_("Add activation shortcut..."));
 				gchar* temp = g_strdup_printf(
-					"%s 'xfce4-panel --plugin-event=docklike-%d:activate-group:string:%s'",
+					"%s 'xfce4-panel --plugin-event=docklike-test-%d:activate-group:string:%s'",
 					command,
 					xfce_panel_plugin_get_unique_id(Plugin::mXfPlugin),
 					mAppInfo->mId.c_str());
@@ -1102,6 +1210,18 @@ GtkWidget* Group::buildContextMenu()
 			this);
 	}
 
+	if (mWindows.size() > 0)
+	{
+		GtkWidget* item = gtk_menu_item_new_with_label(_("Force Quit"));
+		gtk_widget_set_tooltip_text(item, _("Terminate the running instances represented by this icon. Unsaved changes will be lost."));
+		gtk_menu_shell_append(GTK_MENU_SHELL(menu), item);
+		g_signal_connect(item, "activate", G_CALLBACK(+[](GtkMenuItem*, Group* group) {
+			std::vector<XfwWindow*> windows;
+			group->mWindows.forEach([&](GroupWindow* w) { windows.push_back(w->mXfwWindow); });
+			ForceQuit::windows(windows);
+		}), this);
+	}
+
 	gtk_widget_show_all(menu);
 
 	return menu;
@@ -1111,7 +1231,7 @@ void Group::onButtonPress(GdkEventButton* event)
 {
 	if (event->button == GDK_BUTTON_SECONDARY
 		&& mButton != nullptr
-		&& (mWindowsCount > 0 || mPinned))
+		&& (isRunning() || mPinned))
 	{
 		mContextMenu = GTK_WIDGET(g_object_ref_sink(buildContextMenu()));
 		xfce_panel_plugin_register_menu(Plugin::mXfPlugin, GTK_MENU(mContextMenu));
@@ -1143,7 +1263,7 @@ void Group::onButtonRelease(GdkEventButton* event)
 		}
 		}
 	}
-	else if (event->state & GDK_SHIFT_MASK || (mPinned && !mWindowsCount))
+	else if (event->state & GDK_SHIFT_MASK || (!mWindowsCount))
 		mAppInfo->launch();
 	else if (mActive)
 	{
@@ -1173,7 +1293,7 @@ bool Group::onDragMotion(GtkWidget* widget, GdkDragContext* context, int x, int 
 		std::string target = name;
 		g_free(name);
 
-		if (target != "application/docklike_group")
+		if (target != "application/docklike_test_group")
 		{
 			if (mWindowsCount)
 			{

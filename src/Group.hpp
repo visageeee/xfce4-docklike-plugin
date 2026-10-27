@@ -30,6 +30,7 @@
 
 #include <algorithm>
 #include <iostream>
+#include <map>
 
 enum MiddleButtonBehavior
 {
@@ -67,6 +68,10 @@ public:
 
 	void add(GroupWindow* window);
 	void remove(GroupWindow* window);
+	void trackProcess(GroupWindow* window);
+	void onWindowClosed(GroupWindow* window);
+	bool hasLiveProcess();
+	bool isRunning() { return mWindowsCount > 0 || mBackgroundRunning; }
 	void electNewTopWindow();
 	void setTopWindow(GroupWindow* groupWindow);
 
@@ -94,6 +99,9 @@ public:
 	void onDragDataReceived(const GdkDragContext* context, int x, int y, const GtkSelectionData* selectionData, guint info, guint time);
 	void onDragBegin(GdkDragContext* context);
 
+	std::map<int, int> mProcessHandles;
+	guint mProcessCheck = 0;
+	bool mBackgroundRunning = false;
 	bool mPinned;
 	bool mActive;
 	bool mWindowMenuShown;
@@ -111,6 +119,8 @@ public:
 
 	GtkWidget* mButton;
 	GtkWidget* mLabel;
+	gint64 mLauncherCount = 0;
+	bool mLauncherCountVisible = false;
 	GtkWidget* mLauncherLabel;
 	GtkCssProvider* mLauncherCountCssProvider;
 	GtkWidget* mImage;

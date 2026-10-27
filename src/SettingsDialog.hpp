@@ -30,6 +30,7 @@
 namespace SettingsDialog
 {
 	void popup();
+	void updateSwitcherSetting();
 } // namespace SettingsDialog
 
 #endif // SETTINGS_DIALOG_HPP

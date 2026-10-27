@@ -17,12 +17,20 @@
  */
 
 #include "SettingsDialog.hpp"
+#include "Switcher.hpp"
 #include "Hotkeys.hpp"
 #include "Plugin.hpp"
 
 namespace SettingsDialog
 {
 	GtkWidget* mSettingsDialog = nullptr;
+
+	void updateSwitcherSetting()
+	{
+		if (!mSettingsDialog) return;
+		auto* button = GTK_TOGGLE_BUTTON(g_object_get_data(G_OBJECT(mSettingsDialog), "switcher-toggle"));
+		if (button) gtk_toggle_button_set_active(button, Settings::altTabSwitcher);
+	}
 
 	static void updateKeyComboActiveWarning(GtkWidget* widget)
 	{
@@ -78,7 +86,7 @@ namespace SettingsDialog
 		if (xfce_titled_dialog_get_type() == 0)
 			return;
 
-		GtkBuilder* builder = gtk_builder_new_from_resource("/_dialogs.ui");
+		GtkBuilder* builder = gtk_builder_new_from_resource("/org/xfce/docklike-test/_dialogs.ui");
 		GtkWidget* dialog = (GtkWidget*)gtk_builder_get_object(builder, "dialog");
 		mSettingsDialog = dialog;
 		g_object_add_weak_pointer(G_OBJECT(dialog), (gpointer*)&mSettingsDialog);
@@ -277,6 +285,13 @@ namespace SettingsDialog
 			}),
 			iconSize);
 
+		GObject* iconMargin = gtk_builder_get_object(builder, "iconMarginButton");
+		gtk_spin_button_set_value(GTK_SPIN_BUTTON(iconMargin), Settings::iconMargin);
+		g_signal_connect(iconMargin, "value-changed",
+			G_CALLBACK(+[](GtkSpinButton* button) {
+				Settings::iconMargin.set(gtk_spin_button_get_value_as_int(button));
+			}), nullptr);
+
 		GObject* previewWidthButton = gtk_builder_get_object(builder, "previewWidthButton");
 		gtk_spin_button_set_value(GTK_SPIN_BUTTON(previewWidthButton), Settings::previewWidth);
 		g_object_bind_property(showPreviews, "active", previewWidthButton, "sensitive", G_BINDING_SYNC_CREATE);
@@ -319,6 +334,23 @@ namespace SettingsDialog
 
 		updateKeyComboActiveWarning(GTK_WIDGET(keyComboActiveWarning));
 		updateKeyAloneActiveWarning(GTK_WIDGET(keyAloneActiveWarning));
+
+		GObject* appSwitcher = gtk_builder_get_object(builder, "c_altTabSwitcher");
+		g_object_set_data(G_OBJECT(dialog), "switcher-toggle", appSwitcher);
+		gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(appSwitcher), Settings::altTabSwitcher);
+		gtk_widget_set_sensitive(GTK_WIDGET(appSwitcher), Switcher::supported());
+		g_signal_connect(appSwitcher, "toggled", G_CALLBACK(+[](GtkToggleButton* button, gpointer) {
+			Settings::altTabSwitcher.set(gtk_toggle_button_get_active(button));
+			// Keep the control truthful if shortcut installation/restoration failed.
+			gtk_toggle_button_set_active(button, Settings::altTabSwitcher);
+		}), nullptr);
+
+		GObject* listView = gtk_builder_get_object(builder, "c_altTabListView");
+		gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(listView), Settings::altTabListView);
+		gtk_widget_set_sensitive(GTK_WIDGET(listView), Switcher::supported());
+		g_signal_connect(listView, "toggled", G_CALLBACK(+[](GtkToggleButton* button, gpointer) {
+			Settings::altTabListView.set(gtk_toggle_button_get_active(button));
+		}), nullptr);
 
 		GObject* shortcutsButton = gtk_builder_get_object(builder, "c_shortcutsButton");
 		gchar* path = g_find_program_in_path("xfce4-keyboard-settings");

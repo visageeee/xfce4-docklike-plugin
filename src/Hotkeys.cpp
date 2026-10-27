@@ -44,7 +44,7 @@ namespace Hotkeys
 		for (gint n = 0; n < mNbHotkeys; n++)
 		{
 			gchar* command = g_strdup_printf(
-				"xfce4-panel --plugin-event=docklike-%d:activate-group:int:%d",
+				"xfce4-panel --plugin-event=docklike-test-%d:activate-group:int:%d",
 				xfce_panel_plugin_get_unique_id(Plugin::mXfPlugin),
 				n);
 			if (g_hash_table_find(commands, mStrEqual, command) == nullptr)
@@ -111,7 +111,7 @@ namespace Hotkeys
 	{
 		GHashTable* commands = xfconf_channel_get_properties(mChannel, "/commands/custom");
 		gchar* command = g_strdup_printf(
-			"xfce4-panel --plugin-event=docklike-%d:switch-to-last-window",
+			"xfce4-panel --plugin-event=docklike-test-%d:switch-to-last-window",
 			xfce_panel_plugin_get_unique_id(Plugin::mXfPlugin));
 		mKeyAloneGrabbed = true;
 		if (g_hash_table_find(commands, mStrEqual, command) == nullptr)
@@ -189,7 +189,7 @@ namespace Hotkeys
 
 		GHashTable* commands = xfconf_channel_get_properties(mChannel, "/commands/custom");
 		gchar* prefix = g_strdup_printf(
-			"xfce4-panel --plugin-event=docklike-%d:",
+			"xfce4-panel --plugin-event=docklike-test-%d:",
 			xfce_panel_plugin_get_unique_id(Plugin::mXfPlugin));
 		const gchar* property;
 		GValue* command;
@@ -212,7 +212,7 @@ namespace Hotkeys
 
 		GHashTable* commands = xfconf_channel_get_properties(mChannel, "/commands/custom");
 		gchar* command = g_strdup_printf(
-			"xfce4-panel --plugin-event=docklike-%d:activate-group:string:%s",
+			"xfce4-panel --plugin-event=docklike-test-%d:activate-group:string:%s",
 			xfce_panel_plugin_get_unique_id(Plugin::mXfPlugin),
 			appId.c_str());
 		const gchar* property;

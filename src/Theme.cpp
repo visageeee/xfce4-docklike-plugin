@@ -30,7 +30,7 @@ void Theme::load()
 	GtkCssProvider* css_provider = gtk_css_provider_new();
 	std::string css = get_theme_colors();
 	css += LAUNCHER_COUNT_THEME;
-	gchar* filename = xfce_resource_lookup(XFCE_RESOURCE_CONFIG, "xfce4-docklike-plugin/gtk.css");
+	gchar* filename = xfce_resource_lookup(XFCE_RESOURCE_CONFIG, "xfce4-docklike-test-plugin/gtk.css");
 
 	if (filename != nullptr && g_file_test(filename, G_FILE_TEST_IS_REGULAR))
 	{

@@ -1,10 +1,10 @@
 [Xfce Panel]
 Type=X-XFCE-PanelPlugin
 Encoding=UTF-8
-Name=Docklike Taskbar
-Comment=A modern, minimalist taskbar for Xfce
+Name=Docklike Taskbar (Test)
+Comment=Experimental taskbar with shrink-to-fit icons
 Icon=preferences-system
-X-XFCE-Module=docklike
-X-XFCE-Internal=false
+X-XFCE-Module=docklike-test
+X-XFCE-Internal=true
 X-XFCE-Unique=false
 X-XFCE-API=2.0

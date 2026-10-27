@@ -3,6 +3,10 @@ plugin_sources = [
   'AppInfos.hpp',
   'Dock.cpp',
   'Dock.hpp',
+  'DockLayout.hpp',
+  'ForceQuit.cpp',
+  'ForceQuit.hpp',
+  'ProcessStop.hpp',
   'Group.cpp',
   'Group.hpp',
   'GroupMenu.cpp',
@@ -15,11 +19,17 @@ plugin_sources = [
   'Helpers.hpp',
   'Hotkeys.cpp',
   'Hotkeys.hpp',
+  'JumpList.cpp',
+  'JumpList.hpp',
   'LauncherEntry.cpp',
   'LauncherEntry.hpp',
   'Plugin.cpp',
   'Plugin.hpp',
   'register.c',
+  'Switcher.cpp',
+  'Switcher.hpp',
+  'SwitcherShortcuts.cpp',
+  'SwitcherShortcuts.hpp',
   'Settings.cpp',
   'Settings.hpp',
   'SettingsDialog.cpp',
@@ -41,11 +51,11 @@ plugin_sources += gnome.compile_resources(
 plugin_install_subdir = 'xfce4' / 'panel' / 'plugins'
 
 plugin_lib = shared_module(
-  'docklike',
+  'docklike-test',
   plugin_sources,
   gnu_symbol_visibility: 'hidden',
   c_args: [
-    '-DG_LOG_DOMAIN="@0@"'.format('xfce4-docklike-plugin'),
+    '-DG_LOG_DOMAIN="@0@"'.format(meson.project_name()),
   ],
   include_directories: [
     include_directories('..'),
@@ -70,7 +80,7 @@ plugin_lib = shared_module(
 
 i18n.merge_file(
   input: 'docklike.desktop.in',
-  output: 'docklike.desktop',
+  output: 'docklike-test.desktop',
   po_dir: '..' / 'po',
   type: 'desktop',
   install: true,

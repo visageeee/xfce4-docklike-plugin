@@ -144,8 +144,8 @@ void GroupWindow::updateState()
 {
 	bool onScreen = true;
 	bool onWorkspace = true;
-	bool onTasklist = !(mState & XfwWindowState::XFW_WINDOW_STATE_SKIP_TASKLIST);
-	mState = xfw_window_get_state(this->mXfwWindow);
+	const auto newState = xfw_window_get_state(this->mXfwWindow);
+	bool onTasklist = !(newState & XfwWindowState::XFW_WINDOW_STATE_SKIP_TASKLIST);
 
 	if (Settings::onlyDisplayVisible)
 	{
@@ -175,6 +175,15 @@ void GroupWindow::updateState()
 		}
 	}
 
+	// Some tray applications hide from the taskbar without destroying the
+	// window. Preserve process tracking before removing the last visible one.
+	if (mGroupAssociated)
+	{
+		mGroup->trackProcess(this);
+		if (onWorkspace && onScreen && !onTasklist && !getState(XFW_WINDOW_STATE_SKIP_TASKLIST))
+			mGroup->onWindowClosed(this);
+	}
+	mState = newState;
 	if (onWorkspace && onTasklist && onScreen)
 		getInGroup();
 	else

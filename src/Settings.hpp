@@ -44,7 +44,10 @@ namespace Settings
 	const int defPreviewHeight = 162;
 
 	extern State<bool> forceIconSize;
+	extern State<bool> altTabSwitcher;
+	extern State<bool> altTabListView;
 	extern State<int> iconSize;
+	extern State<int> iconMargin;
 
 	extern State<bool> noWindowsListIfSingle;
 	extern State<bool> onlyDisplayVisible;
