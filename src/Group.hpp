@@ -96,7 +96,7 @@ public:
 	bool onDragMotion(GtkWidget* widget, GdkDragContext* context, int x, int y, guint time);
 	void onDragLeave(const GdkDragContext* context, guint time);
 	void onDragDataGet(const GdkDragContext* context, GtkSelectionData* selectionData, guint info, guint time);
-	void onDragDataReceived(const GdkDragContext* context, int x, int y, const GtkSelectionData* selectionData, guint info, guint time);
+	void onDragDataReceived(GdkDragContext* context, int x, int y, const GtkSelectionData* selectionData, guint info, guint time);
 	void onDragBegin(GdkDragContext* context);
 
 	std::map<int, int> mProcessHandles;

@@ -1,6 +1,20 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Generated with glade 3.22.2 -->
 <interface>
+  <object class="GtkAdjustment" id="iconTooltipDelayAdjustment">
+    <property name="lower">0</property>
+    <property name="upper">3000</property>
+    <property name="step_increment">50</property>
+    <property name="page_increment">250</property>
+    <property name="value">90</property>
+  </object>
+  <object class="GtkAdjustment" id="iconHoverBrightnessAdjustment">
+    <property name="lower">0</property>
+    <property name="upper">50</property>
+    <property name="step_increment">1</property>
+    <property name="page_increment">5</property>
+    <property name="value">10</property>
+  </object>
   <object class="GtkAdjustment" id="iconMarginAdjustment">
     <property name="lower">0</property>
     <property name="upper">32</property>
@@ -574,6 +588,84 @@
                             <property name="top_attach">8</property>
                           </packing>
                         </child>
+                    <child>
+                      <object class="GtkCheckButton" id="c_iconHoverEnabled">
+                        <property name="visible">True</property>
+                        <property name="label" translatable="yes">Brighten icons on hover</property>
+                        <property name="tooltip_text" translatable="yes">Gently brighten dock and app-switcher icons under the pointer, fading back when the pointer leaves.</property>
+                        <property name="halign">start</property>
+                      </object>
+                      <packing>
+                        <property name="left_attach">0</property>
+                        <property name="top_attach">9</property>
+                        <property name="width">2</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkLabel">
+                        <property name="visible">True</property>
+                        <property name="label" translatable="yes">Hover brightness (%):</property>
+                        <property name="halign">start</property>
+                      </object>
+                      <packing>
+                        <property name="left_attach">0</property>
+                        <property name="top_attach">10</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkScale" id="iconHoverBrightnessScale">
+                        <property name="visible">True</property>
+                        <property name="can_focus">True</property>
+                        <property name="hexpand">True</property>
+                        <property name="width_request">150</property>
+                        <property name="adjustment">iconHoverBrightnessAdjustment</property>
+                        <property name="digits">0</property>
+                        <property name="round_digits">0</property>
+                        <property name="draw_value">True</property>
+                        <property name="value_pos">right</property>
+                      </object>
+                      <packing>
+                        <property name="left_attach">1</property>
+                        <property name="top_attach">10</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkCheckButton" id="c_iconTooltipsEnabled">
+                        <property name="visible">True</property>
+                        <property name="label" translatable="yes">Show icon hover popups</property>
+                        <property name="tooltip_text" translatable="yes">Show app-name tooltips and window lists or previews when hovering over dock icons.</property>
+                        <property name="halign">start</property>
+                      </object>
+                      <packing>
+                        <property name="left_attach">0</property>
+                        <property name="top_attach">11</property>
+                        <property name="width">2</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkLabel">
+                        <property name="visible">True</property>
+                        <property name="label" translatable="yes">Hover popup delay (ms):</property>
+                        <property name="halign">start</property>
+                      </object>
+                      <packing>
+                        <property name="left_attach">0</property>
+                        <property name="top_attach">12</property>
+                      </packing>
+                    </child>
+                    <child>
+                      <object class="GtkSpinButton" id="iconTooltipDelayButton">
+                        <property name="visible">True</property>
+                        <property name="can_focus">True</property>
+                        <property name="numeric">True</property>
+                        <property name="adjustment">iconTooltipDelayAdjustment</property>
+                        <property name="tooltip_text" translatable="yes">Wait 0–3000 milliseconds before showing a hover popup. Zero shows it immediately.</property>
+                      </object>
+                      <packing>
+                        <property name="left_attach">1</property>
+                        <property name="top_attach">12</property>
+                      </packing>
+                    </child>
                   </object>
                 </child>
                 <child type="label">
@@ -665,6 +757,20 @@
                       </packing>
                     </child>
                     <child>
+                      <object class="GtkCheckButton" id="c_keyAloneWholeApp">
+                        <property name="label" translatable="yes">Switch whole applications</property>
+                        <property name="visible">True</property>
+                        <property name="halign">start</property>
+                        <property name="margin_start">24</property>
+                        <property name="tooltip_text" translatable="yes">Toggle between the two most recently used apps, ignoring window changes within an app. Raise the target app's windows on its workspace and focus its last-used window.</property>
+                      </object>
+                      <packing>
+                        <property name="left_attach">0</property>
+                        <property name="top_attach">2</property>
+                        <property name="width">2</property>
+                      </packing>
+                    </child>
+                    <child>
                       <object class="GtkCheckButton" id="c_altTabSwitcher">
                         <property name="label" translatable="yes">Use Docklike for Alt+Tab</property>
                         <property name="visible">True</property>
@@ -673,7 +779,7 @@
                       </object>
                       <packing>
                         <property name="left_attach">0</property>
-                        <property name="top_attach">2</property>
+                        <property name="top_attach">3</property>
                         <property name="width">2</property>
                       </packing>
                     </child>
@@ -690,7 +796,7 @@
                       </object>
                       <packing>
                         <property name="left_attach">0</property>
-                        <property name="top_attach">4</property>
+                        <property name="top_attach">5</property>
                       </packing>
                     </child>
                     <child>
@@ -702,7 +808,7 @@
                       </object>
                       <packing>
                         <property name="left_attach">0</property>
-                        <property name="top_attach">3</property>
+                        <property name="top_attach">4</property>
                         <property name="width">2</property>
                       </packing>
                     </child>

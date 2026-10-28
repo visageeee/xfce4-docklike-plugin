@@ -31,6 +31,7 @@ create_window()
 	GtkWidget* window = gtk_window_new(GTK_WINDOW_POPUP);
 	gtk_widget_add_events(window, GDK_SCROLL_MASK);
 	gtk_window_set_default_size(GTK_WINDOW(window), 1, 1);
+	gtk_window_set_title(GTK_WINDOW(window), "Docklike Hover");
 
 	gtk_widget_set_app_paintable(window, true);
 	GdkScreen* screen = gtk_widget_get_screen(window);
@@ -64,7 +65,19 @@ GroupMenu::GroupMenu(Group* dockButton)
 	Help::Gtk::cssClassAdd(mWindow, "xfce-docklike-test-window");
 	Help::Gtk::cssClassAdd(mBox, "menu");
 
-	gtk_container_add(GTK_CONTAINER(mWindow), mBox);
+	mContent = gtk_box_new(GTK_ORIENTATION_VERTICAL, 0);
+	mTooltipLabel = gtk_label_new("");
+	gtk_widget_set_margin_start(mTooltipLabel, 8);
+	gtk_widget_set_margin_end(mTooltipLabel, 8);
+	gtk_widget_set_margin_top(mTooltipLabel, 5);
+	gtk_widget_set_margin_bottom(mTooltipLabel, 5);
+	gtk_label_set_ellipsize(GTK_LABEL(mTooltipLabel), PANGO_ELLIPSIZE_END);
+	gtk_label_set_max_width_chars(GTK_LABEL(mTooltipLabel), 48);
+	Help::Gtk::cssClassAdd(mContent, "menu");
+	gtk_box_pack_start(GTK_BOX(mContent), mBox, true, true, 0);
+	gtk_box_pack_start(GTK_BOX(mContent), mTooltipLabel, false, false, 0);
+	gtk_container_add(GTK_CONTAINER(mWindow), mContent);
+	gtk_widget_show(mContent);
 	gtk_widget_show(mBox);
 
 	mPopupIdle.setup([this]() {
@@ -109,12 +122,12 @@ GroupMenu::GroupMenu(Group* dockButton)
 
 	g_signal_connect(G_OBJECT(Plugin::mXfPlugin), "notify::scale-factor",
 		G_CALLBACK(+[](GtkWidget* widget, GParamSpec* pspec, GroupMenu* me) {
-			g_object_ref(me->mBox);
-			gtk_container_remove(GTK_CONTAINER(me->mWindow), me->mBox);
+			g_object_ref(me->mContent);
+			gtk_container_remove(GTK_CONTAINER(me->mWindow), me->mContent);
 			gtk_widget_destroy(me->mWindow);
 			me->mWindow = create_window();
-			gtk_container_add(GTK_CONTAINER(me->mWindow), me->mBox);
-			g_object_unref(me->mBox);
+			gtk_container_add(GTK_CONTAINER(me->mWindow), me->mContent);
+			g_object_unref(me->mContent);
 		}),
 		this);
 }
@@ -147,26 +160,21 @@ void GroupMenu::remove(GroupMenuItem* menuItem)
 
 void GroupMenu::popup()
 {
-	if (mGroup->mWindowsCount >= (Settings::noWindowsListIfSingle ? 2 : 1))
-	{
-		gint wx, wy;
-		mVisible = true;
-
-		updateOrientation();
-
-		// Update the previews before showing the window
-		if (Settings::showPreviews)
-		{
-			mGroup->mWindows.forEach([](GroupWindow* w) -> void {
-				w->mGroupMenuItem->updatePreview();
-			});
-			gtk_window_resize(GTK_WINDOW(mWindow), 1, 1);
-		}
-
-		xfce_panel_plugin_position_widget(Plugin::mXfPlugin, mWindow, mGroup->mButton, &wx, &wy);
-		updatePosition(wx, wy);
-		gtk_widget_show(mWindow);
-	}
+	if (!Settings::iconTooltipsEnabled || !gtk_widget_get_mapped(mGroup->mButton)) return;
+	const bool list = mGroup->mWindowsCount >= (Settings::noWindowsListIfSingle ? 2 : 1);
+	// Use the same icon anchor for short app-name tooltips and window lists.
+	// GTK's default tooltip is pointer-positioned and tends to sit below it.
+	gtk_widget_set_visible(mBox, list);
+	gtk_widget_set_visible(mTooltipLabel, !list);
+	if (!list) gtk_label_set_text(GTK_LABEL(mTooltipLabel), mGroup->mAppInfo->mName.c_str());
+	updateOrientation();
+	if (list && Settings::showPreviews)
+		mGroup->mWindows.forEach([](GroupWindow* w) { w->mGroupMenuItem->updatePreview(); });
+	gint wx, wy;
+	xfce_panel_plugin_position_widget(Plugin::mXfPlugin, mWindow, mGroup->mButton, &wx, &wy);
+	updatePosition(wx, wy);
+	mVisible = true;
+	gtk_widget_show(mWindow);
 }
 
 void GroupMenu::updateOrientation()
@@ -191,30 +199,39 @@ void GroupMenu::updatePosition(gint wx, gint wy)
 	monitor = gdk_display_get_monitor_at_window(display, gtk_widget_get_window(mGroup->mButton));
 	gdk_monitor_get_geometry(monitor, &geometry);
 
-	gint window_width, window_height;
-	gtk_window_get_size(GTK_WINDOW(mWindow), &window_width, &window_height);
-
-	gint button_width = gtk_widget_get_allocated_width(mGroup->mButton);
-	gint button_height = gtk_widget_get_allocated_height(mGroup->mButton);
-
-	XfcePanelPluginMode panelMode = xfce_panel_plugin_get_mode(Plugin::mXfPlugin);
-
-	if (panelMode == XFCE_PANEL_PLUGIN_MODE_HORIZONTAL)
+	// Measure the current contents, not the old popup allocation (or its
+	// initial 1x1 size), before centring it against the button's root position.
+	GtkRequisition minimum, natural;
+	gtk_widget_get_preferred_size(mWindow, &minimum, &natural);
+	const int window_width = std::max(1, natural.width);
+	const int window_height = std::max(1, natural.height);
+	GtkWidget* top = gtk_widget_get_toplevel(mGroup->mButton);
+	gint bx = 0, by = 0, rootX = 0, rootY = 0;
+	gtk_widget_translate_coordinates(mGroup->mButton, top, 0, 0, &bx, &by);
+	gdk_window_get_origin(gtk_widget_get_window(top), &rootX, &rootY);
+	bx += rootX; by += rootY;
+	const int button_width = gtk_widget_get_allocated_width(mGroup->mButton);
+	const int button_height = gtk_widget_get_allocated_height(mGroup->mButton);
+	const auto mode = xfce_panel_plugin_get_mode(Plugin::mXfPlugin);
+	const auto position = xfce_panel_plugin_get_screen_position(Plugin::mXfPlugin);
+	const int gap = 6;
+	if (mode == XFCE_PANEL_PLUGIN_MODE_HORIZONTAL)
 	{
-		if (wx != geometry.x + geometry.width - window_width)
-		{
-			wx -= (window_width / 2) - (button_width / 2);
-			wx = wx < geometry.x ? geometry.x : wx;
-		}
+		wx = bx + (button_width - window_width) / 2;
+		const bool bottom = xfce_screen_position_is_bottom(position)
+			|| (!xfce_screen_position_is_top(position) && by + button_height / 2 > geometry.y + geometry.height / 2);
+		wy = bottom ? by - window_height - gap : by + button_height + gap;
 	}
 	else
 	{
-		if (wy != geometry.y + geometry.height - window_height)
-		{
-			wy -= (window_height / 2) - (button_height / 2);
-			wy = wy < geometry.y ? geometry.y : wy;
-		}
+		wy = by + (button_height - window_height) / 2;
+		const bool right = xfce_screen_position_is_right(position)
+			|| (!xfce_screen_position_is_left(position) && bx + button_width / 2 > geometry.x + geometry.width / 2);
+		wx = right ? bx - window_width - gap : bx + button_width + gap;
 	}
+	wx = std::max(geometry.x, std::min(wx, geometry.x + geometry.width - window_width));
+	wy = std::max(geometry.y, std::min(wy, geometry.y + geometry.height - window_height));
+	gtk_window_resize(GTK_WINDOW(mWindow), window_width, window_height);
 
 #ifdef ENABLE_WAYLAND
 	if (gtk_layer_is_supported())

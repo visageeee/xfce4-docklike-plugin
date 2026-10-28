@@ -49,6 +49,8 @@ public:
 
 	GtkWidget* mWindow;
 	GtkWidget* mBox;
+	GtkWidget* mContent;
+	GtkWidget* mTooltipLabel;
 
 	bool mVisible;
 	bool mMouseHover;

@@ -17,6 +17,7 @@
  */
 
 #include "Group.hpp"
+#include "IconHover.hpp"
 #include "ForceQuit.hpp"
 #include "Hotkeys.hpp"
 #include "Switcher.hpp"
@@ -31,7 +32,7 @@
 #include <libxfce4windowing/xfw-x11.h>
 #endif
 
-static GtkTargetEntry entries[1] = {{(gchar*)"application/docklike_test_group", 0, 0}};
+static GtkTargetEntry entries[1] = {{(gchar*)"application/docklike_test_group", GTK_TARGET_SAME_APP, 0}};
 static GtkTargetList* targetList = gtk_target_list_new(entries, 1);
 
 static std::string getDragId(const std::shared_ptr<AppInfo>& appInfo)
@@ -78,7 +79,7 @@ Group::Group(std::shared_ptr<AppInfo> appInfo, bool pinned) : mPinned(pinned), m
 		return true;
 	});
 
-	mMenuShowTimeout.setup(90, [this]() {
+	mMenuShowTimeout.setup(Settings::iconTooltipDelay, [this]() {
 		onMouseEnter();
 		return false;
 	});
@@ -87,6 +88,7 @@ Group::Group(std::shared_ptr<AppInfo> appInfo, bool pinned) : mPinned(pinned), m
 
 	mButton = GTK_WIDGET(g_object_ref(gtk_button_new()));
 	mImage = gtk_image_new();
+	IconHover::bind(mImage, mButton);
 	mLabel = gtk_label_new("");
 	mLauncherLabel = gtk_label_new("");
 	mLauncherCountCssProvider = gtk_css_provider_new();
@@ -116,7 +118,19 @@ Group::Group(std::shared_ptr<AppInfo> appInfo, bool pinned) : mPinned(pinned), m
 
 	g_object_set_data(G_OBJECT(mButton), "group", this);
 	gtk_button_set_relief(GTK_BUTTON(mButton), GTK_RELIEF_NONE);
-	gtk_drag_dest_set(mButton, GTK_DEST_DEFAULT_DROP, entries, 1, GDK_ACTION_MOVE);
+	gtk_drag_dest_set(mButton, (GtkDestDefaults)0, entries, 1, (GdkDragAction)(GDK_ACTION_MOVE | GDK_ACTION_COPY));
+	GtkTargetList* dropTargets = gtk_drag_dest_get_target_list(mButton);
+	gtk_target_list_add_uri_targets(dropTargets, 1);
+	gtk_target_list_add_text_targets(dropTargets, 2);
+	g_signal_connect(mButton, "drag-drop",
+		G_CALLBACK(+[](GtkWidget* widget, GdkDragContext* context, gint, gint, guint time, Group* me) -> gboolean {
+			GdkAtom target = gtk_drag_dest_find_target(widget, context, nullptr);
+			const bool internal = target == gdk_atom_intern_static_string("application/docklike_test_group");
+			if (target == GDK_NONE || (!internal && (!me->mAppInfo->acceptsDrops()
+				|| !(gdk_drag_context_get_actions(context) & GDK_ACTION_COPY)))) return false;
+			gtk_drag_get_data(widget, context, target, time);
+			return true;
+		}), this);
 	gtk_widget_add_events(mButton, GDK_SCROLL_MASK | GDK_POINTER_MOTION_MASK);
 
 	//--------------------------------------------------
@@ -212,7 +226,7 @@ Group::Group(std::shared_ptr<AppInfo> appInfo, bool pinned) : mPinned(pinned), m
 		G_CALLBACK(+[](GtkWidget* widget, GdkEventCrossing* event, Group* me) {
 			Help::Gtk::cssClassAdd(me->mButton, "hover_group");
 			me->mLeaveTimeout.stop();
-			me->mMenuShowTimeout.start();
+			if (Settings::iconTooltipsEnabled) me->mMenuShowTimeout.start();
 
 			if (Settings::showPreviews)
 				me->mWindows.forEach([](GroupWindow* w) -> void {
@@ -499,6 +513,21 @@ void Group::onDraw(cairo_t* cr)
 {
 	int w = gtk_widget_get_allocated_width(mButton);
 	int h = gtk_widget_get_allocated_height(mButton);
+
+	// Draw above theme backgrounds, including user CSS that clears button borders.
+	if (gtk_style_context_has_class(gtk_widget_get_style_context(mButton), "drop_target"))
+	{
+		GdkRGBA color = {0.2, 0.6, 1.0, 1.0};
+		gtk_style_context_lookup_color(gtk_widget_get_style_context(mButton), "selected_bg_color", &color);
+		cairo_save(cr);
+		cairo_rectangle(cr, 2, 2, std::max(0, w - 4), std::max(0, h - 4));
+		cairo_set_source_rgba(cr, color.red, color.green, color.blue, 0.22);
+		cairo_fill_preserve(cr);
+		cairo_set_source_rgba(cr, color.red, color.green, color.blue, 0.95);
+		cairo_set_line_width(cr, 2);
+		cairo_stroke(cr);
+		cairo_restore(cr);
+	}
 
 	double rgba[4];
 
@@ -962,15 +991,9 @@ void Group::updateStyle()
 	else
 		gtk_widget_hide(mButton);
 
-	if (mWindowsCount > 0)
-	{
-		if (mWindowsCount == 1 && Settings::noWindowsListIfSingle)
-			gtk_widget_set_tooltip_text(mButton, mAppInfo->mName.c_str());
-		else
-			gtk_widget_set_tooltip_text(mButton, nullptr);
-	}
-	else
-		gtk_widget_set_tooltip_text(mButton, mAppInfo->mName.c_str());
+	// GroupMenu handles both app-name tooltips and window lists, anchored
+	// consistently to the icon rather than the mouse pointer.
+	gtk_widget_set_has_tooltip(mButton, false);
 
 	if (mWindowsCount > 2 && Settings::showWindowCount)
 	{
@@ -1278,45 +1301,33 @@ void Group::onButtonRelease(GdkEventButton* event)
 
 bool Group::onDragMotion(GtkWidget* widget, GdkDragContext* context, int x, int y, guint time)
 {
-	GdkModifierType mask;
-	GdkDevice* device = gdk_drag_context_get_device(context);
-	gdk_window_get_device_position(gtk_widget_get_window(widget), device, nullptr, nullptr, &mask);
-
-	if (mask & GDK_CONTROL_MASK)
-		gtk_drag_cancel(context);
-
-	GList* tmp_list = gdk_drag_context_list_targets(context);
-
-	if (tmp_list != nullptr)
+	GdkAtom target = gtk_drag_dest_find_target(widget, context, nullptr);
+	const bool internal = target == gdk_atom_intern_static_string("application/docklike_test_group");
+	const bool accept = target != GDK_NONE && (internal || (mAppInfo->acceptsDrops()
+		&& (gdk_drag_context_get_actions(context) & GDK_ACTION_COPY)));
+	mMenuShowTimeout.stop();
+	mGroupMenu.hide();
+	if (accept)
 	{
-		gchar* name = gdk_atom_name(GDK_POINTER_TO_ATOM(tmp_list->data));
-		std::string target = name;
-		g_free(name);
-
-		if (target != "application/docklike_test_group")
-		{
-			if (mWindowsCount)
-			{
-				GroupWindow* groupWindow = mWindows.get(mTopWindowIndex);
-				groupWindow->activate(time);
-
-				if (!mGroupMenu.mVisible)
-					onMouseEnter();
-			}
-
-			gdk_drag_status(context, GDK_ACTION_DEFAULT, time);
-			return true;
-		}
+		gtk_drag_highlight(mButton);
+		Help::Gtk::cssClassAdd(mButton, "drop_target");
+		gtk_widget_queue_draw(mButton);
 	}
-
-	gtk_drag_highlight(mButton);
-	gdk_drag_status(context, GDK_ACTION_MOVE, time);
+	else
+	{
+		gtk_drag_unhighlight(mButton);
+		Help::Gtk::cssClassRemove(mButton, "drop_target");
+		gtk_widget_queue_draw(mButton);
+	}
+	gdk_drag_status(context, accept ? (internal ? GDK_ACTION_MOVE : GDK_ACTION_COPY) : (GdkDragAction)0, time);
 	return true;
 }
 
 void Group::onDragLeave(const GdkDragContext* context, guint time)
 {
 	gtk_drag_unhighlight(mButton);
+	Help::Gtk::cssClassRemove(mButton, "drop_target");
+	gtk_widget_queue_draw(mButton);
 	onMouseLeave();
 }
 
@@ -1327,20 +1338,26 @@ void Group::onDragDataGet(const GdkDragContext* context, GtkSelectionData* selec
 		(const guchar*)dragId.data(), static_cast<gint>(dragId.size()));
 }
 
-void Group::onDragDataReceived(const GdkDragContext* context, int x, int y, const GtkSelectionData* selectionData, guint info, guint time)
+void Group::onDragDataReceived(GdkDragContext* context, int x, int y, const GtkSelectionData* selectionData, guint info, guint time)
 {
-	const guchar* data = gtk_selection_data_get_data(selectionData);
-	int length = gtk_selection_data_get_length(selectionData);
-
-	if (data == nullptr || length <= 0 || gtk_selection_data_get_format(selectionData) != 8
-		|| gtk_selection_data_get_data_type(selectionData) != gtk_selection_data_get_target(selectionData))
-		return;
-
-	std::string dragId((const char*)data, length);
-	std::shared_ptr<Group> moving = getDragGroup(dragId);
-
-	if (moving)
-		Dock::moveButton(moving.get(), this);
+	bool success = false;
+	if (info == 0)
+	{
+		const guchar* data = gtk_selection_data_get_data(selectionData);
+		const int length = gtk_selection_data_get_length(selectionData);
+		if (data && length > 0 && gtk_selection_data_get_format(selectionData) == 8)
+		{
+			std::shared_ptr<Group> moving = getDragGroup(std::string((const char*)data, length));
+			if (moving) { Dock::moveButton(moving.get(), this); success = true; }
+		}
+	}
+	else if (info == 1 || info == 2)
+		success = mAppInfo->openDrop(selectionData, info == 1, time);
+	gtk_drag_unhighlight(mButton);
+	Help::Gtk::cssClassRemove(mButton, "drop_target");
+	gtk_widget_queue_draw(mButton);
+	// Opening a file never removes it from the drag source.
+	gtk_drag_finish(context, success, false, time);
 }
 
 void Group::onDragBegin(GdkDragContext* context)

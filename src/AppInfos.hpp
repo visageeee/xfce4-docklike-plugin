@@ -40,6 +40,8 @@ struct AppInfo
 		: mId(id), mPath(path), mIcon(icon), mName(name), mGAppInfo(gAppInfo, [](gpointer o) { if (o) g_object_unref(o); }) {}
 	const gchar* const* getActions() { return mGAppInfo ? g_desktop_app_info_list_actions(mGAppInfo.get()) : nullptr; };
 	void launch();
+	bool acceptsDrops() const;
+	bool openDrop(const GtkSelectionData* data, bool uris, guint time);
 	void launchAction(const gchar* action);
 	void edit();
 };

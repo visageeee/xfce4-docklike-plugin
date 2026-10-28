@@ -22,6 +22,8 @@
 #include <libxfce4ui/libxfce4ui.h>
 
 #include <unordered_set>
+#include <cstring>
+#include <glib/gstdio.h>
 
 void AppInfo::launch()
 {
@@ -37,6 +39,84 @@ void AppInfo::launch()
 		}
 		g_object_unref(context);
 	}
+}
+
+bool AppInfo::acceptsDrops() const
+{
+	return mGAppInfo && (g_app_info_supports_files(G_APP_INFO(mGAppInfo.get()))
+		|| g_app_info_supports_uris(G_APP_INFO(mGAppInfo.get())));
+}
+
+bool AppInfo::openDrop(const GtkSelectionData* data, bool uriList, guint time)
+{
+	if (!acceptsDrops() || gtk_selection_data_get_length(data) <= 0
+		|| gtk_selection_data_get_length(data) > 1024 * 1024) return false;
+	GList* uris = nullptr;
+	gchar* tempDir = nullptr;
+	gchar* tempPath = nullptr;
+	GError* error = nullptr;
+	if (uriList)
+	{
+		gchar** values = gtk_selection_data_get_uris(data);
+		if (values) for (int i = 0; values[i]; ++i)
+		{
+			gchar* scheme = g_uri_parse_scheme(values[i]);
+			if (!scheme) { g_strfreev(values); g_list_free_full(uris, g_free); return false; }
+			g_free(scheme);
+			uris = g_list_append(uris, g_strdup(values[i]));
+		}
+		g_strfreev(values);
+	}
+	else
+	{
+		gchar* text = (gchar*)gtk_selection_data_get_text(data);
+		if (!text || !*text) { g_free(text); return false; }
+		gchar* trimmed = g_strstrip(g_strdup(text));
+		gchar* scheme = g_uri_parse_scheme(trimmed);
+		const bool link = scheme && !strpbrk(trimmed, " \t\r\n")
+			&& (!g_ascii_strcasecmp(scheme, "http") || !g_ascii_strcasecmp(scheme, "https")
+				|| !g_ascii_strcasecmp(scheme, "ftp") || !g_ascii_strcasecmp(scheme, "file")
+				|| !g_ascii_strcasecmp(scheme, "mailto"));
+		if (link) uris = g_list_append(uris, g_strdup(trimmed));
+		else
+		{
+			// A private temporary document survives asynchronous app startup.
+			tempDir = g_dir_make_tmp("docklike-drop-XXXXXX", &error);
+			if (tempDir)
+			{
+				tempPath = g_build_filename(tempDir, "Dropped text.txt", nullptr);
+				if (g_file_set_contents(tempPath, text, -1, &error))
+					uris = g_list_append(uris, g_filename_to_uri(tempPath, nullptr, nullptr));
+			}
+		}
+		g_free(scheme); g_free(trimmed); g_free(text);
+	}
+	bool success = false;
+	if (uris)
+	{
+		bool supported = true;
+		if (!g_app_info_supports_uris(G_APP_INFO(mGAppInfo.get())))
+			for (GList* it = uris; it; it = it->next)
+			{
+				gchar* path = g_filename_from_uri((gchar*)it->data, nullptr, nullptr);
+				if (!path) supported = false;
+				g_free(path);
+			}
+		if (supported)
+		{
+			GdkAppLaunchContext* context = gdk_display_get_app_launch_context(Plugin::mDisplay);
+			gdk_app_launch_context_set_timestamp(context, time);
+			success = g_app_info_launch_uris(G_APP_INFO(mGAppInfo.get()), uris,
+				G_APP_LAUNCH_CONTEXT(context), &error);
+			g_object_unref(context);
+		}
+	}
+	if (error) { g_warning("Could not open drop with %s: %s", mName.c_str(), error->message); g_error_free(error); }
+	if (!success && tempPath) g_unlink(tempPath);
+	if (!success && tempDir) g_rmdir(tempDir);
+	g_free(tempPath); g_free(tempDir);
+	g_list_free_full(uris, g_free);
+	return success;
 }
 
 void AppInfo::launchAction(const gchar* action)

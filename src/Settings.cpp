@@ -31,6 +31,10 @@ namespace Settings
 	State<bool> altTabListView;
 	State<int> iconSize;
 	State<int> iconMargin;
+	State<bool> iconHoverEnabled;
+	State<bool> iconTooltipsEnabled;
+	State<int> iconTooltipDelay;
+	State<int> iconHoverBrightness;
 
 	State<bool> noWindowsListIfSingle;
 	State<bool> onlyDisplayVisible;
@@ -47,6 +51,7 @@ namespace Settings
 
 	State<bool> keyComboActive;
 	State<bool> keyAloneActive;
+	State<bool> keyAloneWholeApp;
 
 	State<std::list<std::string>> pinnedAppList;
 	State<std::pair<std::list<std::string>, std::list<std::string>>> userSetApps;
@@ -200,6 +205,44 @@ namespace Settings
 				Dock::onPanelResize();
 			});
 
+		iconTooltipsEnabled.setup(!g_key_file_has_key(file, "user", "iconTooltipsEnabled", nullptr)
+			|| g_key_file_get_boolean(file, "user", "iconTooltipsEnabled", nullptr), [](bool enabled) {
+			g_key_file_set_boolean(mFile.get(), "user", "iconTooltipsEnabled", enabled);
+			saveFile();
+			if (!enabled) Dock::mGroups.forEach([](std::pair<std::shared_ptr<AppInfo>, std::shared_ptr<Group>> entry) {
+				entry.second->mMenuShowTimeout.stop();
+				entry.second->mGroupMenu.hide();
+			});
+		});
+		const int tooltipDelay = g_key_file_has_key(file, "user", "iconTooltipDelay", nullptr)
+			? g_key_file_get_integer(file, "user", "iconTooltipDelay", nullptr) : 90;
+		iconTooltipDelay.setup(CLAMP(tooltipDelay, 0, 3000), [](int delay) {
+			const int clamped = CLAMP(delay, 0, 3000);
+			if (delay != clamped) { iconTooltipDelay.set(clamped); return; }
+			g_key_file_set_integer(mFile.get(), "user", "iconTooltipDelay", delay);
+			saveFile();
+			Dock::mGroups.forEach([delay](std::pair<std::shared_ptr<AppInfo>, std::shared_ptr<Group>> entry) {
+				entry.second->mMenuShowTimeout.stop();
+				entry.second->mMenuShowTimeout.mDuration = delay;
+			});
+		});
+
+		iconHoverEnabled.setup(!g_key_file_has_key(file, "user", "iconHoverEnabled", nullptr)
+			|| g_key_file_get_boolean(file, "user", "iconHoverEnabled", nullptr), [](bool enabled) {
+			g_key_file_set_boolean(mFile.get(), "user", "iconHoverEnabled", enabled);
+			saveFile();
+			if (Dock::mBox) gtk_widget_queue_draw(Dock::mBox);
+		});
+		const int hoverBrightness = g_key_file_has_key(file, "user", "iconHoverBrightness", nullptr)
+			? g_key_file_get_integer(file, "user", "iconHoverBrightness", nullptr) : 10;
+		iconHoverBrightness.setup(CLAMP(hoverBrightness, 0, 50), [](int value) {
+			const int clamped = CLAMP(value, 0, 50);
+			if (value != clamped) { iconHoverBrightness.set(clamped); return; }
+			g_key_file_set_integer(mFile.get(), "user", "iconHoverBrightness", value);
+			saveFile();
+			if (Dock::mBox) gtk_widget_queue_draw(Dock::mBox);
+		});
+
 		iconMargin.setup(CLAMP(g_key_file_get_integer(file, "user", "iconMargin", nullptr), 0, 32),
 			[](int margin) {
 				const int clamped = CLAMP(margin, 0, 32);
@@ -297,6 +340,12 @@ namespace Settings
 				g_key_file_set_boolean(mFile.get(), "user", "keyComboActive", _keyComboActive);
 				saveFile();
 				Hotkeys::updateSettings();
+			});
+
+		keyAloneWholeApp.setup(g_key_file_get_boolean(file, "user", "keyAloneWholeApp", nullptr),
+			[](bool enabled) {
+				g_key_file_set_boolean(mFile.get(), "user", "keyAloneWholeApp", enabled);
+				saveFile();
 			});
 
 		keyAloneActive.setup(g_key_file_get_boolean(file, "user", "keyAloneActive", nullptr),

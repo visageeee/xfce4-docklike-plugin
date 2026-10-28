@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "Switcher.hpp"
+#include "IconHover.hpp"
 #include "SwitcherShortcuts.hpp"
 #include "Dock.hpp"
 #include <map>
@@ -143,6 +144,7 @@ void rebuild(bool initial, bool reverse = false)
 		GtkWidget* image = icon ? gtk_image_new_from_gicon(icon, GTK_ICON_SIZE_DIALOG)
 			: gtk_image_new_from_icon_name("application-x-executable", GTK_ICON_SIZE_DIALOG);
 		gtk_image_set_pixel_size(GTK_IMAGE(image), listView ? 28 : 48);
+		IconHover::bind(image, card);
 		GtkWidget* label = gtk_label_new(group->mAppInfo->mName.c_str());
 		gtk_label_set_ellipsize(GTK_LABEL(label), PANGO_ELLIPSIZE_END);
 		gtk_label_set_max_width_chars(GTK_LABEL(label), listView ? 36 : 13);

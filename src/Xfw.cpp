@@ -21,6 +21,8 @@
 #include <libxfce4ui/libxfce4ui.h>
 
 #include <unordered_set>
+#include <list>
+#include <vector>
 
 namespace Xfw
 {
@@ -38,6 +40,18 @@ namespace Xfw
 	};
 	// clang-format on
 	XfwWindow* mPreviousActiveWindow = nullptr;
+	// Weak references retain recency without keeping closed windows alive.
+	static std::list<std::weak_ptr<GroupWindow>> recentWindows;
+
+	static void rememberWindow(const std::shared_ptr<GroupWindow>& window)
+	{
+		if (!window || !window->mGroup || window->getState(XFW_WINDOW_STATE_SKIP_TASKLIST)) return;
+		recentWindows.remove_if([&](const std::weak_ptr<GroupWindow>& entry) {
+			auto existing = entry.lock();
+			return !existing || existing == window;
+		});
+		recentWindows.push_front(window);
+	}
 
 	namespace // private:
 	{
@@ -185,6 +199,7 @@ namespace Xfw
 
 	void finalize()
 	{
+		recentWindows.clear();
 		mGroupWindows.clear();
 		g_signal_handlers_disconnect_by_data(xfw_screen_get_workspace_manager(mXfwScreen), nullptr);
 		g_signal_handlers_disconnect_by_data(mXfwWorkspaceGroup, nullptr);
@@ -227,10 +242,16 @@ namespace Xfw
 		{
 			std::shared_ptr<GroupWindow> groupWindow = mGroupWindows.get(previousActiveWindow);
 			if (groupWindow)
+			{
+				rememberWindow(groupWindow);
 				groupWindow->onUnactivate();
+			}
 		}
 		if (activeWindow != nullptr)
-			mGroupWindows.get(activeWindow)->onActivate();
+		{
+			auto window = mGroupWindows.get(activeWindow);
+			if (window) { rememberWindow(window); window->onActivate(); }
+		}
 	}
 
 	void setVisibleGroups()
@@ -249,6 +270,34 @@ namespace Xfw
 
 	void switchToLastWindow()
 	{
+		if (Settings::keyAloneWholeApp)
+		{
+			auto active = mGroupWindows.get(getActiveWindow());
+			std::shared_ptr<GroupWindow> target;
+			for (const auto& entry : recentWindows)
+			{
+				auto window = entry.lock();
+				if (window && window->mGroup && !window->getState(XFW_WINDOW_STATE_SKIP_TASKLIST)
+					&& (!active || window->mGroup != active->mGroup))
+				{ target = window; break; }
+			}
+			if (!target) return;
+			// Use the full registry so workspace filtering cannot hide the target.
+			// Leave windows on other workspaces in place.
+			auto workspace = xfw_window_get_workspace(target->mXfwWindow);
+			std::vector<std::shared_ptr<GroupWindow>> siblings;
+			mGroupWindows.forEach([&](std::pair<XfwWindow* const, std::shared_ptr<GroupWindow>> item) {
+				auto window = item.second;
+				if (window && window != target && window->mGroup == target->mGroup
+					&& !window->getState(XFW_WINDOW_STATE_SKIP_TASKLIST)
+					&& (xfw_window_get_workspace(window->mXfwWindow) == workspace
+						|| window->getState(XFW_WINDOW_STATE_PINNED)))
+					siblings.push_back(window);
+			});
+			for (const auto& window : siblings) window->activate(GDK_CURRENT_TIME);
+			target->activate(GDK_CURRENT_TIME);
+			return;
+		}
 		if (mPreviousActiveWindow != nullptr)
 		{
 			std::shared_ptr<GroupWindow> prevWindow = mGroupWindows.get(mPreviousActiveWindow);

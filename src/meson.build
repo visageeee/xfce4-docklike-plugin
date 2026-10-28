@@ -7,6 +7,7 @@ plugin_sources = [
   'ForceQuit.cpp',
   'ForceQuit.hpp',
   'ProcessStop.hpp',
+  'IconHover.hpp',
   'Group.cpp',
   'Group.hpp',
   'GroupMenu.cpp',

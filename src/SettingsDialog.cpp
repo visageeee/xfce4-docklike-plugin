@@ -285,6 +285,32 @@ namespace SettingsDialog
 			}),
 			iconSize);
 
+		GObject* tooltipsEnabled = gtk_builder_get_object(builder, "c_iconTooltipsEnabled");
+		GObject* tooltipDelay = gtk_builder_get_object(builder, "iconTooltipDelayButton");
+		gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(tooltipsEnabled), Settings::iconTooltipsEnabled);
+		gtk_spin_button_set_value(GTK_SPIN_BUTTON(tooltipDelay), Settings::iconTooltipDelay);
+		gtk_widget_set_sensitive(GTK_WIDGET(tooltipDelay), Settings::iconTooltipsEnabled);
+		g_signal_connect(tooltipsEnabled, "toggled", G_CALLBACK(+[](GtkToggleButton* button, GtkWidget* delayControl) {
+			Settings::iconTooltipsEnabled.set(gtk_toggle_button_get_active(button));
+			gtk_widget_set_sensitive(delayControl, Settings::iconTooltipsEnabled);
+		}), tooltipDelay);
+		g_signal_connect(tooltipDelay, "value-changed", G_CALLBACK(+[](GtkSpinButton* button, gpointer) {
+			Settings::iconTooltipDelay.set(gtk_spin_button_get_value_as_int(button));
+		}), nullptr);
+
+		GObject* hoverEnabled = gtk_builder_get_object(builder, "c_iconHoverEnabled");
+		GObject* hoverBrightness = gtk_builder_get_object(builder, "iconHoverBrightnessScale");
+		gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(hoverEnabled), Settings::iconHoverEnabled);
+		gtk_range_set_value(GTK_RANGE(hoverBrightness), Settings::iconHoverBrightness);
+		gtk_widget_set_sensitive(GTK_WIDGET(hoverBrightness), Settings::iconHoverEnabled);
+		g_signal_connect(hoverEnabled, "toggled", G_CALLBACK(+[](GtkToggleButton* button, GtkWidget* slider) {
+			Settings::iconHoverEnabled.set(gtk_toggle_button_get_active(button));
+			gtk_widget_set_sensitive(slider, Settings::iconHoverEnabled);
+		}), hoverBrightness);
+		g_signal_connect(hoverBrightness, "value-changed", G_CALLBACK(+[](GtkRange* slider, gpointer) {
+			Settings::iconHoverBrightness.set(static_cast<int>(gtk_range_get_value(slider) + 0.5));
+		}), nullptr);
+
 		GObject* iconMargin = gtk_builder_get_object(builder, "iconMarginButton");
 		gtk_spin_button_set_value(GTK_SPIN_BUTTON(iconMargin), Settings::iconMargin);
 		g_signal_connect(iconMargin, "value-changed",
@@ -322,6 +348,13 @@ namespace SettingsDialog
 			}),
 			keyComboActiveWarning);
 
+		GObject* wholeApp = gtk_builder_get_object(builder, "c_keyAloneWholeApp");
+		gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(wholeApp), Settings::keyAloneWholeApp);
+		gtk_widget_set_sensitive(GTK_WIDGET(wholeApp), Settings::keyAloneActive);
+		g_signal_connect(wholeApp, "toggled", G_CALLBACK(+[](GtkToggleButton* button, gpointer) {
+			Settings::keyAloneWholeApp.set(gtk_toggle_button_get_active(button));
+		}), nullptr);
+
 		GObject* keyAloneActiveWarning = gtk_builder_get_object(builder, "c_keyAloneActiveWarning");
 		GObject* keyAloneActive = gtk_builder_get_object(builder, "c_keyAloneActive");
 		gtk_toggle_button_set_active(GTK_TOGGLE_BUTTON(keyAloneActive), Settings::keyAloneActive);
@@ -331,6 +364,10 @@ namespace SettingsDialog
 				updateKeyAloneActiveWarning(tooltip);
 			}),
 			keyAloneActiveWarning);
+
+		g_signal_connect(keyAloneActive, "toggled", G_CALLBACK(+[](GtkToggleButton* button, GtkWidget* option) {
+			gtk_widget_set_sensitive(option, gtk_toggle_button_get_active(button));
+		}), wholeApp);
 
 		updateKeyComboActiveWarning(GTK_WIDGET(keyComboActiveWarning));
 		updateKeyAloneActiveWarning(GTK_WIDGET(keyAloneActiveWarning));
